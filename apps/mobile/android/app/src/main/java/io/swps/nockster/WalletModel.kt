@@ -177,10 +177,16 @@ class WalletModel(private val webView: WebView, val deviceUnlock: DeviceUnlock, 
         }
     }
 
-    fun background(force: Boolean = false) {
+    // A pause means something is drawn over the activity while it stays on
+    // screen: the system's screen-recording or permission dialog, a share sheet,
+    // a biometric prompt. That does not lock the wallet. MainActivity sets
+    // FLAG_SECURE for the pause, and the wallet locks when the activity stops.
+    fun pause() { foreground = false }
+    fun background() {
         foreground = false
-        if (force || (!authenticating && !cameraPermissionPrompt && !credentialPrompt)) { privateScreen = true; lock() }
-        if (force && !authenticating) automaticUnlockPending = true
+        privateScreen = true
+        lock()
+        if (!authenticating) automaticUnlockPending = true
     }
     fun foreground() {
         foreground = true

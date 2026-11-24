@@ -99,37 +99,44 @@ final class WalletLoginTests: XCTestCase {
 }
 
 @MainActor
-final class WalletAutofillLockTests: XCTestCase {
-    /// Password AutoFill confirms with Face ID in a system sheet. That makes the
-    /// scene inactive without leaving the app, and must not lock the wallet out
-    /// from under the password field. Leaving the app still locks.
-    func testAutofillPromptKeepsWalletOpenAndBackgroundStillLocks() async throws {
+final class WalletInactiveLockTests: XCTestCase {
+    /// The scene goes inactive, without the app leaving the screen, for the
+    /// screenshot preview, Control Center (starting a screen recording), and
+    /// the Face ID sheet of Password AutoFill. None of those may lock the
+    /// wallet and throw away the screen the user was on. Leaving the app locks.
+    func testInactiveKeepsWalletOpenAndBackgroundLocks() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let host = try XCTUnwrap(scene.windows.first?.rootViewController as? UIHostingController<WalletRootView>)
         let model = host.rootView.model
         for _ in 0..<150 where !model.ready { try await Task.sleep(for: .milliseconds(200)) }
         XCTAssertTrue(model.ready, model.error ?? "Engine did not become ready")
 
-        // A password field has focus when the system sheet appears.
+        // A screenshot preview or Control Center: inactive, then active again.
         model.snapshot.unlocked = true
+        let session = model.sessionID
+        model.setActive(false)
+        XCTAssertTrue(model.snapshot.unlocked, "Becoming inactive must not lock the wallet")
+        XCTAssertFalse(model.privateScreen)
+        model.setActive(true)
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertTrue(model.snapshot.unlocked)
+        XCTAssertEqual(model.sessionID, session, "The open screen must survive the interruption")
+
+        // The same with a password field focused (the AutoFill sheet).
         model.credentialField(focused: true)
         model.setActive(false)
         XCTAssertTrue(model.snapshot.unlocked, "The AutoFill sheet must not lock the wallet")
         model.setActive(true)
-        XCTAssertTrue(model.snapshot.unlocked)
+        model.credentialField(focused: false)
 
-        // Leaving the app locks, focused field or not.
+        // Leaving the app locks.
         model.setActive(false)
         model.enterBackground()
         XCTAssertFalse(model.snapshot.unlocked, "Backgrounding must lock the wallet")
+        XCTAssertTrue(model.privateScreen)
+        XCTAssertNotEqual(model.sessionID, session)
         model.setActive(true)
         try await Task.sleep(for: .milliseconds(500))
-
-        // With no password field focused, becoming inactive locks as before.
-        model.snapshot.unlocked = true
-        model.setActive(false)
-        XCTAssertFalse(model.snapshot.unlocked, "Inactive without a password prompt must still lock")
-        model.setActive(true)
-        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertFalse(model.privateScreen)
     }
 }

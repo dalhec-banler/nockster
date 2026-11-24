@@ -366,21 +366,21 @@ final class WalletModel: ObservableObject {
         } catch { self.error = error.localizedDescription; return nil }
     }
 
+    /// The scene becomes inactive whenever the system draws over the app without
+    /// the app leaving the screen: the screenshot preview, Control Center (where
+    /// a screen recording is started), Notification Center, a system prompt.
+    /// None of those lock the wallet. `SceneDelegate` covers the window while
+    /// inactive, and `enterBackground` locks when the app does leave the screen.
     func setActive(_ active: Bool) {
         self.active = active
-        if active { backgrounded = false }
+        guard active else { return }
+        backgrounded = false
         if authenticating || cameraPermissionPrompt || credentialPrompt { return }
-
-        if !active {
-            privateScreen = true
-            lock()
-        } else {
-            Task {
-                await lockTask?.value
-                guard self.active else { return }
-                privateScreen = false
-                await automaticallyUnlock()
-            }
+        Task {
+            await lockTask?.value
+            guard self.active else { return }
+            privateScreen = false
+            await automaticallyUnlock()
         }
     }
 

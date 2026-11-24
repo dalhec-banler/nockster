@@ -74,27 +74,39 @@ class EntryLifecycleTest {
         ui.runOnIdle { assertFalse(model.unlocked) }
     }
 
-    // A password manager confirms autofill with a biometric prompt that pauses the
-    // activity without leaving the app. That must not lock the wallet out from
-    // under the password field; stopping the activity still locks.
-    @Test fun autofillPromptKeepsWalletOpenAndLeavingStillLocks() {
-        ui.runOnIdle {
-            model.snapshot = JSONObject().put("exists", true).put("unlocked", true)
-            model.credentialField(true)
+    // A pause leaves the activity on screen under something else: the system's
+    // screen-recording or permission dialog, a share sheet, a password manager's
+    // biometric prompt. None of those may lock the wallet and throw away the
+    // screen the user was on. Stopping the activity locks.
+    @Test fun pauseKeepsWalletOpenAndLeavingLocks() {
+        ui.runOnIdle { model.snapshot = JSONObject().put("exists", true).put("unlocked", true) }
+        val session = model.session
+        ui.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        ui.activityRule.scenario.onActivity { activity ->
+            assertTrue("A pause must not lock the wallet", model.unlocked)
+            assertFalse(model.privateScreen)
+            assertTrue("The paused window is protected", activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
         }
+        ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        ui.runOnIdle {
+            assertTrue(model.unlocked)
+            assertEquals("The open screen must survive the interruption", session, model.session)
+        }
+
+        // The same with a password field focused (a password manager's prompt).
+        ui.runOnIdle { model.credentialField(true) }
         ui.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
         ui.activityRule.scenario.onActivity { assertTrue("The autofill prompt must not lock the wallet", model.unlocked) }
         ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-        ui.runOnIdle { assertTrue(model.unlocked) }
+        ui.runOnIdle { model.credentialField(false) }
+
         ui.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
-        ui.activityRule.scenario.onActivity { assertFalse("Leaving the app must lock the wallet", model.unlocked) }
+        ui.activityRule.scenario.onActivity {
+            assertFalse("Leaving the app must lock the wallet", model.unlocked)
+            assertTrue(model.privateScreen)
+            assertNotEquals(session, model.session)
+        }
         ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         ui.waitUntil(10_000) { !model.privateScreen }
-
-        // With no password field focused, a pause locks as before.
-        ui.runOnIdle { model.snapshot = JSONObject().put("exists", true).put("unlocked", true) }
-        ui.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
-        ui.activityRule.scenario.onActivity { assertFalse("A pause without a password prompt must still lock", model.unlocked) }
-        ui.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
     }
 }
