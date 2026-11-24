@@ -46,10 +46,10 @@ class MainActivity : BridgeActivity() {
     }
     override fun onPause() {
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        model?.background()
+        model?.pause()
         super.onPause()
     }
-    override fun onStop() { model?.background(force = true); super.onStop() }
+    override fun onStop() { model?.background(); super.onStop() }
     override fun onResume() { super.onResume(); screenCapture?.apply(); model?.foreground() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); model?.receive(intent.data) }
 }
